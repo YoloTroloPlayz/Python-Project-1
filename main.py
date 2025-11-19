@@ -13,9 +13,6 @@ datum = datetime.now().strftime("%Y-%m-%d")  # huidige datum in yyyy-MM-dd forma
 # lijst tijdelijk opslaan favoriete haltes
 temp_favorieten = []
 
-global Entiteitnummer
-global Haltenummer
-
 def zoek_halte():
     zoekterm = entry_zoek.get().strip()
     if not zoekterm:
@@ -38,29 +35,55 @@ def zoek_halte():
         listbox_haltes.insert(tk.END, f"{naam} (ID: {entiteitnummer})")
 
 def get_haltesleutels(entiteitnummer, haltenummer):
-    url3 = f"GET https://api.delijn.be/DLKernOpenData/v1/haltes/{entiteitnummer}/{haltenummer}"
+    url3 = f"https://api.delijn.be/DLKernOpenData/v1/haltes/{entiteitnummer}/{haltenummer}"
     headers3 = {"Ocp-Apim-Subscription-Key": API_KEY}
     antwoord3 = requests.get(url3, headers=headers3)
+    if antwoord3.status_code != 200:
+        raise RuntimeError(f"Fout bij haltesleutels: status {antwoord3.status_code}")
     data3 = antwoord3.json()
-    haltesleutels = data3["haltesleutels"]
-    return haltesleutels
+    return data3.get("haltesleutels")
 
 def zoek_omleidingen():
-    url2 = f"https://api.delijn.be/DLKernOpenData/api/v1/haltes/lijst/{get_haltesleutels(entiteitnummer, haltenummer)}/omleidingen[{datum}]" # omleidingen api
+    # veiligheden bij gebruik van selectie
+    try:
+        geselecteerde_halte = listbox_haltes.get(listbox_haltes.curselection())
+    except (tk.TclError, IndexError):
+        messagebox.showwarning("Waarschuwing", "Selecteer een halte.")
+        return
+
+    try:
+        id_part = geselecteerde_halte.split("ID:")[-1].strip()
+        if id_part.endswith(")"):
+            id_part = id_part[:-1].strip()
+        entiteitnummer, haltenummer = id_part.split("-", 1)
+    except Exception:
+        messagebox.showerror("Fout", "Kon halte-ID niet uitlezen. Verwacht format: 'Naam (ID: entiteit-haltenummer)'.")
+        return
+
+    try:
+        haltesleutels = get_haltesleutels(entiteitnummer, haltenummer)
+    except Exception as e:
+        messagebox.showerror("Fout", f"Fout bij ophalen haltesleutels: {e}")
+        return
+    
+    if not haltesleutels:
+        messagebox.showinfo("Info", "Geen haltesleutels gevonden.")
+        return
+
+    # vanaf hier API requests en in listbox steken
+    url2 = f"https://api.delijn.be/DLKernOpenData/api/v1/haltes/lijst/{haltesleutels}/omleidingen?datum={datum}"
     headers2 = {"Ocp-Apim-Subscription-Key": API_KEY}
     antwoord2 = requests.get(url2, headers=headers2)
-
     if antwoord2.status_code != 200:
         messagebox.showerror("Fout", f"Status code {antwoord2.status_code}")
         return
-    
+
     data2 = antwoord2.json()
     listbox_omleidingen.delete(0, tk.END)
-
-    for item in data2["halteOmleidingen"]:
-        for oml in item["omleidingen"]:
-            for lr in oml["lijnrichtingen"]:
-                listbox_omleidingen.insert(tk.END, f"Lijn {lr['lijnNummerPubliek']} naar {lr['bestemming']}")
+    for item in data2.get("halteOmleidingen", []):
+        for oml in item.get("omleidingen", []):
+            for lr in oml.get("lijnrichtingen", []):
+                listbox_omleidingen.insert(tk.END, f"Lijn {lr.get('lijnNummerPubliek')} naar {lr.get('bestemming')}")
 
 
 def halte_favorieten():
