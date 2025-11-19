@@ -32,60 +32,39 @@ def zoek_halte():
     for halte in data.get("haltes", []):
         naam = halte.get("omschrijving")
         entiteitnummer = halte.get("entiteitnummer") # halte id
-        listbox_haltes.insert(tk.END, f"{naam} (ID: {entiteitnummer})")
-
-def get_haltesleutels(entiteitnummer, haltenummer):
-    url3 = f"https://api.delijn.be/DLKernOpenData/v1/haltes/{entiteitnummer}/{haltenummer}"
-    headers3 = {"Ocp-Apim-Subscription-Key": API_KEY}
-    antwoord3 = requests.get(url3, headers=headers3)
-    if antwoord3.status_code != 200:
-        raise RuntimeError(f"Fout bij haltesleutels: status {antwoord3.status_code}")
-    data3 = antwoord3.json()
-    return data3.get("haltesleutels")
+        haltenummer = halte.get("haltenummer")
+        listbox_haltes.insert(tk.END, f"{naam} (ID: {entiteitnummer}-{haltenummer})")
 
 def zoek_omleidingen():
-    # veiligheden bij gebruik van selectie
-    try:
-        geselecteerde_halte = listbox_haltes.get(listbox_haltes.curselection())
-    except (tk.TclError, IndexError):
-        messagebox.showwarning("Waarschuwing", "Selecteer een halte.")
-        return
+    url2 = f"https://api.delijn.be/DLKernOpenData/api/v1/omleidingen[?{datum}][&startDatum]"
+    headers = {"Ocp-Apim-Subscription-Key": API_KEY}
+    antwoord2 = requests.get(url2, headers=headers) # reponse krijgen van api
 
-    try:
-        id_part = geselecteerde_halte.split("ID:")[-1].strip()
-        if id_part.endswith(")"):
-            id_part = id_part[:-1].strip()
-        entiteitnummer, haltenummer = id_part.split("-", 1)
-    except Exception:
-        messagebox.showerror("Fout", "Kon halte-ID niet uitlezen. Verwacht format: 'Naam (ID: entiteit-haltenummer)'.")
+    if antwoord2.status_code == 404:
+        listbox_omleidingen.delete(0, tk.END)
+        listbox_omleidingen.insert(tk.END, "Geen omleidingen gevonden voor deze halte.")
         return
-
-    try:
-        haltesleutels = get_haltesleutels(entiteitnummer, haltenummer)
-    except Exception as e:
-        messagebox.showerror("Fout", f"Fout bij ophalen haltesleutels: {e}")
-        return
-    
-    if not haltesleutels:
-        messagebox.showinfo("Info", "Geen haltesleutels gevonden.")
-        return
-
-    # vanaf hier API requests en in listbox steken
-    url2 = f"https://api.delijn.be/DLKernOpenData/api/v1/haltes/lijst/{haltesleutels}/omleidingen?datum={datum}"
-    headers2 = {"Ocp-Apim-Subscription-Key": API_KEY}
-    antwoord2 = requests.get(url2, headers=headers2)
-    if antwoord2.status_code != 200:
-        messagebox.showerror("Fout", f"Status code {antwoord2.status_code}")
-        return
+    elif antwoord2.status_code != 200:
+        messagebox.showerror("Fout", f"Status code {antwoord2.status_code}\n{antwoord2.text}")
 
     data2 = antwoord2.json()
     listbox_omleidingen.delete(0, tk.END)
-    for item in data2.get("halteOmleidingen", []):
-        for oml in item.get("omleidingen", []):
-            for lr in oml.get("lijnrichtingen", []):
-                listbox_omleidingen.insert(tk.END, f"Lijn {lr.get('lijnNummerPubliek')} naar {lr.get('bestemming')}")
-
-
+    for omleiding in data2.get("omleidingen", []):
+        titel = omleiding.get("titel", "Geen titel")
+        start = omleiding.get("periode", {}).get("startDatum", "?")
+        eind = omleiding.get("periode", {}).get("eindDatum", "?")
+        
+        listbox_omleidingen.insert(tk.END, f"━ {titel}")
+        listbox_omleidingen.insert(tk.END, f"  Periode: {start} tot {eind}")
+        
+        # toon betrokken lijnen
+        for lr in omleiding.get("lijnrichtingen", []):
+            lijn = lr.get("lijnNummerPubliek", "?")
+            bestemming = lr.get("bestemming", "?")
+            listbox_omleidingen.insert(tk.END, f"  Lijn {lijn} → {bestemming}")
+        
+        listbox_omleidingen.insert(tk.END, "")  # leeg voor scheiding
+        
 def halte_favorieten():
     favoriet = listbox_haltes.selection_get()
     listbox_favorieten.insert(tk.END, favoriet)
@@ -157,8 +136,8 @@ tk.Button(frame_favorites, text="Verwijder", command=halte_verwijderen_favoriete
 frame_omleidingen = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
 frame_omleidingen.pack(side="left", fill="both", expand=True, padx=5)
 
-tk.Label(frame_omleidingen, text="Omleidingen lijn").pack(anchor="w")
-tk.Button(frame_omleidingen, text="Zie", command=zoek_omleidingen).pack(anchor="w", pady=5)
+tk.Label(frame_omleidingen, text="Omleidingen Delijn").pack(anchor="w")
+tk.Button(frame_omleidingen, text="Zoek", command=zoek_omleidingen).pack(anchor="w", pady=5)
 listbox_omleidingen = tk.Listbox(frame_omleidingen, width=25, height=15)
 listbox_omleidingen.pack(fill="both", expand=True, padx=5, pady=5)
 
