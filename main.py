@@ -4,12 +4,17 @@ from tkinter import messagebox
 import os
 from dotenv import load_dotenv # modules
 import json
+from datetime import datetime
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY") # ga naar env file voor api key
+datum = datetime.now().strftime("%Y-%m-%d")  # huidige datum in yyyy-MM-dd format
 
 # lijst tijdelijk opslaan favoriete haltes
 temp_favorieten = []
+
+global Entiteitnummer
+global Haltenummer
 
 def zoek_halte():
     zoekterm = entry_zoek.get().strip()
@@ -31,6 +36,32 @@ def zoek_halte():
         naam = halte.get("omschrijving")
         entiteitnummer = halte.get("entiteitnummer") # halte id
         listbox_haltes.insert(tk.END, f"{naam} (ID: {entiteitnummer})")
+
+def get_haltesleutels(entiteitnummer, haltenummer):
+    url3 = f"GET https://api.delijn.be/DLKernOpenData/v1/haltes/{entiteitnummer}/{haltenummer}"
+    headers3 = {"Ocp-Apim-Subscription-Key": API_KEY}
+    antwoord3 = requests.get(url3, headers=headers3)
+    data3 = antwoord3.json()
+    haltesleutels = data3["haltesleutels"]
+    return haltesleutels
+
+def zoek_omleidingen():
+    url2 = f"https://api.delijn.be/DLKernOpenData/api/v1/haltes/lijst/{get_haltesleutels(entiteitnummer, haltenummer)}/omleidingen[{datum}]" # omleidingen api
+    headers2 = {"Ocp-Apim-Subscription-Key": API_KEY}
+    antwoord2 = requests.get(url2, headers=headers2)
+
+    if antwoord2.status_code != 200:
+        messagebox.showerror("Fout", f"Status code {antwoord2.status_code}")
+        return
+    
+    data2 = antwoord2.json()
+    listbox_omleidingen.delete(0, tk.END)
+
+    for item in data2["halteOmleidingen"]:
+        for oml in item["omleidingen"]:
+            for lr in oml["lijnrichtingen"]:
+                listbox_omleidingen.insert(tk.END, f"Lijn {lr['lijnNummerPubliek']} naar {lr['bestemming']}")
+
 
 def halte_favorieten():
     favoriet = listbox_haltes.selection_get()
@@ -67,38 +98,47 @@ def load_favorieten(): # bij opstarten favorieten inladen uit json
 
 root = tk.Tk()
 root.title("De Lijn Haltezoeker")
+root.geometry("1200x600")  # afmetingen form
+
+# main frame
+frame_top = tk.Frame(root)
+frame_top.pack(fill="both", expand=True, padx=10, pady=10)
 
 # zoeken
-frame_zoek = tk.Frame(root, padx=10, pady=10)
-frame_zoek.pack(fill="x")
+frame_zoek = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
+frame_zoek.pack(side="left", fill="both", expand=True)
 
-tk.Label(frame_zoek, text="Zoek halte:").pack(side="left")
-entry_zoek = tk.Entry(frame_zoek, width=40)
-entry_zoek.pack(side="left", padx=5)
-tk.Button(frame_zoek, text="Zoek", command=zoek_halte).pack(side="left")
+tk.Label(frame_zoek, text="Zoek halte:").pack(anchor="w")
+entry_zoek = tk.Entry(frame_zoek, width=20)
+entry_zoek.pack(anchor="w")
+tk.Button(frame_zoek, text="Zoek", command=zoek_halte).pack(anchor="w", pady=5)
 
-# haltes tonen
-frame_result = tk.Frame(root, padx=10, pady=10)
-frame_result.pack(fill="both", expand=True)
+tk.Label(frame_zoek, text="Gevonden haltes:").pack(anchor="w", pady=(10,0))
+listbox_haltes = tk.Listbox(frame_zoek, width=25, height=15)
+listbox_haltes.pack(fill="both", expand=True, padx=5, pady=5)
 
-tk.Label(frame_result, text="Gevonden haltes:").pack(anchor="w")
-listbox_haltes = tk.Listbox(frame_result, width=60, height=20)
-listbox_haltes.pack(fill="both", expand=True)
+# favorieten 
+frame_favorites = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
+frame_favorites.pack(side="left", fill="both", expand=True, padx=5)
 
-# favorieten tonen (onder frame_result)
-frame_favorites = tk.Frame(root, padx=10, pady=10)
-frame_favorites.pack(fill="x")  
+tk.Label(frame_favorites, text="Voeg toe:").pack(anchor="w")
+tk.Button(frame_favorites, text="Voeg Toe", command=halte_favorieten).pack(anchor="w", pady=5)
 
-tk.Label(frame_favorites, text="Voeg toe aan favorieten:").pack(side="top", anchor="w")
-tk.Button(frame_favorites, text="Voeg Toe", command=halte_favorieten).pack(side="top", anchor="w", pady=(0,10))
+tk.Label(frame_favorites, text="Favorieten:").pack(anchor="w", pady=(10,0))
+listbox_favorieten = tk.Listbox(frame_favorites, width=25, height=10)
+listbox_favorieten.pack(fill="both", expand=True, padx=5, pady=5)
 
-tk.Label(frame_favorites, text="Favoriete haltes:").pack(anchor="w", pady=(10,0))
-listbox_favorieten = tk.Listbox(frame_favorites, width=60, height=8)
-listbox_favorieten.pack(fill="both", expand=True)
+tk.Button(frame_favorites, text="Verwijder", command=halte_verwijderen_favorieten).pack(anchor="w", pady=5)
 
-tk.Label(frame_favorites, text="Verwijder uit favorieten:").pack(side="top", anchor="sw", pady=(10,0))
-tk.Button(frame_favorites, text="Verwijder", command=halte_verwijderen_favorieten).pack(side="top", anchor="sw", pady=(0,10))
+# omleidingen 
+frame_omleidingen = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
+frame_omleidingen.pack(side="left", fill="both", expand=True, padx=5)
 
-root.after(0, load_favorieten) # bij opstart
+tk.Label(frame_omleidingen, text="Omleidingen lijn").pack(anchor="w")
+tk.Button(frame_omleidingen, text="Zie", command=zoek_omleidingen).pack(anchor="w", pady=5)
+listbox_omleidingen = tk.Listbox(frame_omleidingen, width=25, height=15)
+listbox_omleidingen.pack(fill="both", expand=True, padx=5, pady=5)
+
+root.after(0, load_favorieten)
 root.protocol("WM_DELETE_WINDOW", on_closing)
 root.mainloop()
