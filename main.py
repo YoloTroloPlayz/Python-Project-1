@@ -4,7 +4,7 @@ from tkinter import messagebox
 import os
 from dotenv import load_dotenv # modules
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY") # ga naar env file voor api key
@@ -36,34 +36,43 @@ def zoek_halte():
         listbox_haltes.insert(tk.END, f"{naam} (ID: {entiteitnummer}-{haltenummer})")
 
 def zoek_omleidingen():
-    url2 = f"https://api.delijn.be/DLKernOpenData/api/v1/omleidingen[?{datum}][&startDatum]"
+    vandaag = datetime.now().date()
+    binnen_30 = vandaag + timedelta(days=30)
+
+    nu = datetime.now()
+    start = nu.strftime("%Y-%m-%dT%H:%M:%S")
+    einde = (nu + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    url2 = (
+        #"https://api.delijn.be/DLKernOpenData/api/v1/omleidingen"
+        #f"?startDatum={start}&eindDatum={einde}" was voor met tijd maar werkt niet geeft error 400 bad request
+        "https://api.delijn.be/DLKernOpenData/api/v1/omleidingen"
+    )
+
     headers = {"Ocp-Apim-Subscription-Key": API_KEY}
-    antwoord2 = requests.get(url2, headers=headers) # reponse krijgen van api
+    antwoord2 = requests.get(url2, headers=headers)
 
     if antwoord2.status_code == 404:
         listbox_omleidingen.delete(0, tk.END)
-        listbox_omleidingen.insert(tk.END, "Geen omleidingen gevonden voor deze halte.")
+        listbox_omleidingen.insert(tk.END, "Geen omleidingen gevonden.")
         return
-    elif antwoord2.status_code != 200:
-        messagebox.showerror("Fout", f"Status code {antwoord2.status_code}\n{antwoord2.text}")
+
+    if antwoord2.status_code != 200:
+        messagebox.showerror("Fout", f"Status: {antwoord2.status_code}\n{antwoord2.text}")
+        return
 
     data2 = antwoord2.json()
     listbox_omleidingen.delete(0, tk.END)
+
     for omleiding in data2.get("omleidingen", []):
         titel = omleiding.get("titel", "Geen titel")
         start = omleiding.get("periode", {}).get("startDatum", "?")
         eind = omleiding.get("periode", {}).get("eindDatum", "?")
-        
+
         listbox_omleidingen.insert(tk.END, f"━ {titel}")
         listbox_omleidingen.insert(tk.END, f"  Periode: {start} tot {eind}")
-        
-        # toon betrokken lijnen
-        for lr in omleiding.get("lijnrichtingen", []):
-            lijn = lr.get("lijnNummerPubliek", "?")
-            bestemming = lr.get("bestemming", "?")
-            listbox_omleidingen.insert(tk.END, f"  Lijn {lijn} → {bestemming}")
-        
-        listbox_omleidingen.insert(tk.END, "")  # leeg voor scheiding
+
+        listbox_omleidingen.insert(tk.END, "") # lege regel voor scheiding
         
 def halte_favorieten():
     favoriet = listbox_haltes.selection_get()
@@ -137,7 +146,7 @@ frame_omleidingen = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwi
 frame_omleidingen.pack(side="left", fill="both", expand=True, padx=5)
 
 tk.Label(frame_omleidingen, text="Omleidingen Delijn").pack(anchor="w")
-tk.Button(frame_omleidingen, text="Zoek", command=zoek_omleidingen).pack(anchor="w", pady=5)
+tk.Button(frame_omleidingen, text="Geef alles weer", command=zoek_omleidingen).pack(anchor="w", pady=5)
 listbox_omleidingen = tk.Listbox(frame_omleidingen, width=25, height=15)
 listbox_omleidingen.pack(fill="both", expand=True, padx=5, pady=5)
 
