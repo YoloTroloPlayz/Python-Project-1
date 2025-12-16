@@ -13,21 +13,44 @@ datum = datetime.now().strftime("%Y-%m-%d")  # huidige datum in yyyy-MM-dd forma
 # lijst tijdelijk opslaan favoriete haltes
 temp_favorieten = []
 
+# klasse voor het uitvoeren van API aanvragen
+class APIRequest:
+    def __init__(self, api_key):
+        self.headers = {"Ocp-Apim-Subscription-Key": api_key}
+
+    def get(self, url):
+        antwoord = requests.get(url, headers=self.headers)
+        if antwoord.status_code != 200:
+            raise Exception(f"Status code {antwoord.status_code}")
+        return antwoord.json()
+
+# subklasse specifieke API endpoints bevat en erft van APIRequest
+class DeLijnAPI(APIRequest):
+    def __init__(self, api_key):
+        super().__init__(api_key)
+
+    def zoek_haltes(self, zoekterm):
+        url = f"https://api.delijn.be/DLZoekOpenData/v1/zoek/haltes/{zoekterm}"
+        return self.get(url)
+
+    def zoek_omleidingen(self):
+        url = "https://api.delijn.be/DLKernOpenData/api/v1/omleidingen"
+        return self.get(url)
+
+api = DeLijnAPI(API_KEY)
+
 def zoek_halte():
     zoekterm = entry_zoek.get().strip()
     if not zoekterm:
         messagebox.showwarning("Waarschuwing", "Vul eerst een plaats in!")
         return
     
-    url = f"https://api.delijn.be/DLZoekOpenData/v1/zoek/haltes/{zoekterm}" # van de lijn api website
-    headers = {"Ocp-Apim-Subscription-Key": API_KEY}
-    antwoord = requests.get(url, headers=headers) # reponse krijgen van api
-
-    if antwoord.status_code != 200: # error als status niet ok
-        messagebox.showerror("Fout", f"Status code {antwoord.status_code}")
+    try:
+        data = api.zoek_haltes(zoekterm)
+    except Exception as e:
+        messagebox.showerror("Fout", str(e))
         return
 
-    data = antwoord.json()
     listbox_haltes.delete(0, tk.END)
     for halte in data.get("haltes", []):
         naam = halte.get("omschrijving")
@@ -36,32 +59,12 @@ def zoek_halte():
         listbox_haltes.insert(tk.END, f"{naam} (ID: {entiteitnummer}-{haltenummer})")
 
 def zoek_omleidingen():
-    vandaag = datetime.now().date()
-    binnen_30 = vandaag + timedelta(days=30)
-
-    nu = datetime.now()
-    start = nu.strftime("%Y-%m-%dT%H:%M:%S")
-    einde = (nu + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
-
-    url2 = (
-        #"https://api.delijn.be/DLKernOpenData/api/v1/omleidingen"
-        #f"?startDatum={start}&eindDatum={einde}" was voor met tijd maar werkt niet geeft error 400 bad request
-        "https://api.delijn.be/DLKernOpenData/api/v1/omleidingen"
-    )
-
-    headers = {"Ocp-Apim-Subscription-Key": API_KEY}
-    antwoord2 = requests.get(url2, headers=headers)
-
-    if antwoord2.status_code == 404:
-        listbox_omleidingen.delete(0, tk.END)
-        listbox_omleidingen.insert(tk.END, "Geen omleidingen gevonden.")
+    try:
+        data2 = api.zoek_omleidingen()
+    except Exception as e:
+        messagebox.showerror("Fout", str(e))
         return
 
-    if antwoord2.status_code != 200:
-        messagebox.showerror("Fout", f"Status: {antwoord2.status_code}\n{antwoord2.text}")
-        return
-
-    data2 = antwoord2.json()
     listbox_omleidingen.delete(0, tk.END)
 
     for omleiding in data2.get("omleidingen", []):
@@ -71,7 +74,6 @@ def zoek_omleidingen():
 
         listbox_omleidingen.insert(tk.END, f"━ {titel}")
         listbox_omleidingen.insert(tk.END, f"  Periode: {start} tot {eind}")
-
         listbox_omleidingen.insert(tk.END, "") # lege regel voor scheiding
         
 def halte_favorieten():
@@ -103,7 +105,6 @@ def load_favorieten(): # bij opstarten favorieten inladen uit json
 
     temp_favorieten.clear()
     for item in items:
-        # voeg ook toe aan tijdelijk of hij ze worden niet terug opgeslaan bij afsluiten
         temp_favorieten.append(item) 
         listbox_favorieten.insert(tk.END, item) 
 
@@ -111,11 +112,9 @@ root = tk.Tk()
 root.title("De Lijn Haltezoeker")
 root.geometry("1200x600")  # afmetingen form
 
-# main frame
 frame_top = tk.Frame(root)
 frame_top.pack(fill="both", expand=True, padx=10, pady=10)
 
-# zoeken
 frame_zoek = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
 frame_zoek.pack(side="left", fill="both", expand=True)
 
@@ -128,7 +127,6 @@ tk.Label(frame_zoek, text="Gevonden haltes:").pack(anchor="w", pady=(10,0))
 listbox_haltes = tk.Listbox(frame_zoek, width=25, height=15)
 listbox_haltes.pack(fill="both", expand=True, padx=5, pady=5)
 
-# favorieten 
 frame_favorites = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
 frame_favorites.pack(side="left", fill="both", expand=True, padx=5)
 
@@ -141,7 +139,6 @@ listbox_favorieten.pack(fill="both", expand=True, padx=5, pady=5)
 
 tk.Button(frame_favorites, text="Verwijder", command=halte_verwijderen_favorieten).pack(anchor="w", pady=5)
 
-# omleidingen 
 frame_omleidingen = tk.Frame(frame_top, padx=5, pady=5, relief="ridge", borderwidth=1)
 frame_omleidingen.pack(side="left", fill="both", expand=True, padx=5)
 
