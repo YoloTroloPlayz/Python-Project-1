@@ -1,8 +1,8 @@
-import requests 
+import requests # packages
 import tkinter as tk
 from tkinter import messagebox
-import os
-from dotenv import load_dotenv # modules
+from dotenv import load_dotenv 
+import os # modules
 import json
 from datetime import datetime, timedelta
 
